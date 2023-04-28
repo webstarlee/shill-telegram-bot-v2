@@ -1,9 +1,8 @@
 import logging
-import asyncio
 import numpy as np
 import threading
 from datetime import datetime, timedelta
-from models import Pair, Project, Warn, RemovedPair, Setting, Leaderboard
+from models import Pair, Project, Warn, Setting, Leaderboard
 from config import LEADERBOARD_ID
 from helpers import make_pair_array, make_coins_ids, get_time_delta, get_percent, format_number_string, convert_am_time, convert_am_str
 from apis import get_pairs_by_pair_address, cryptocurrency_info_ids
@@ -11,6 +10,9 @@ from apis import get_pairs_by_pair_address, cryptocurrency_info_ids
 def pair_marketcap_update(pair, marketcap):
     Pair.find_one_and_update({"_id": pair['_id']}, {"$set": {"marketcap": marketcap, "updated_at": datetime.utcnow()}})
     Project.update_many({"pair_address": pair['pair_address']}, {"$set": {"ath_value": marketcap}})
+
+def update_pair_db_removed():
+    Pair.update_many({"status": "removed"}, {"$set": {"broadcast": False}})
 
 def top_ten_update(all_results, two_results, one_results):
     user_name_array = []
@@ -26,7 +28,15 @@ def top_ten_update(all_results, two_results, one_results):
         if not one_result['username'] in user_name_array:
                 user_name_array.append(one_result['username'])
     
-    Setting.find_one_and_update({"master": "master"}, {"$set": {"top_ten_users": user_name_array}})
+    setting = Setting.find_one({"master": "master"})
+    if setting != None:
+        Setting.find_one_and_update({"_id": setting['_id']}, {"$set": {"top_ten_users": user_name_array}})
+    else:
+        setting = {
+            "master": "master",
+            "top_ten_users": user_name_array
+        }
+        Setting.insert_one(setting)
 
 def user_rug_check(pair):
     logging.info("Rug check function working")
@@ -53,40 +63,22 @@ def user_rug_check(pair):
                     Warn.insert_one(warn_user)
                     logging.info(f"Insert warnning for {project['username']}")
 
-    exist_removed_pair = RemovedPair.find({"pair_address": pair['pair_address']})
-    if len(exist_removed_pair)==0:
-        removed_pair = {
-            "token": pair['token'],
-            "symbol": pair['symbol'],
-            "chain_id": pair['chain_id'],
-            "pair_address": pair['pair_address'],
-            "url": pair['url'],
-            "is_broadcast": False,
-            "removed_at": datetime.utcnow()
-        }
-        RemovedPair.insert_one(removed_pair)
-    # Pair.find_one_and_delete({'_id': pair['_id']})
+    Pair.find_one_and_update({"_id": pair['_id']}, {"$set" : {"status": "removed", "removed_at": datetime.utcnow(), "broadcast": True}})
 
 def leaderboard_db_update(leaderboard, text):
     Leaderboard.find_one_and_update({"_id": leaderboard['_id']}, {"$set": {"text": text}})
 
-def leaderboard_db_insert(type, text):
-    leaderboard = {
-        "type": type,
-        "chat_id": LEADERBOARD_ID,
-        "mssage_id": "",
-        "text": text
-    }
-    Leaderboard.insert_one(leaderboard)
+def update_leaderboard_message_id(id, message_id):
+    print(f"message_id: {message_id}")
+    print(f"ID: {id}")
+    Leaderboard.find_one_and_update({"_id": id}, {"$set": {"message_id": message_id}})
 
 async def token_update():
-    pairs_cursor = Pair.find()
+    pairs_cursor = Pair.find({"status": "active"})
     pairs = list(pairs_cursor)
 
     pairs_chunks = make_pair_array(pairs)
     pair_mcoin_ids = make_coins_ids(pairs)
-
-    logging.info(f"coin marketcap ids: {pair_mcoin_ids}")
 
     eth_pairs_chunks = pairs_chunks['eth']
     bsc_pairs_chunks = pairs_chunks['bsc']
@@ -175,6 +167,8 @@ def get_broadcasts():
         leaderboard = Leaderboard.find_one({"type": single_leader_data['type']})
         if leaderboard != None:
             leaderboard_item = {
+                "_id": leaderboard['_id'],
+                "type": single_leader_data['type'],
                 "chat_id": LEADERBOARD_ID,
                 "message_id": leaderboard['message_id'],
                 "text": single_leader_data['text']
@@ -183,18 +177,16 @@ def get_broadcasts():
             leaderboard_update = threading.Thread(target=leaderboard_db_update, args=(leaderboard, single_leader_data['text'],))
             leaderboard_update.start()
         else:
-            leaderboard_item = {
+            leaderboard = {
+                "type": single_leader_data['type'],
                 "chat_id": LEADERBOARD_ID,
                 "message_id": "",
                 "text": single_leader_data['text']
             }
-            broadcast_data.append(leaderboard_item)
-            leaderboard_insert = threading.Thread(target=leaderboard_db_insert, args=(None, single_leader_data['text'],))
-            leaderboard_insert.start()
+            Leaderboard.insert_one(leaderboard)
+            broadcast_data.append(leaderboard)
 
     return broadcast_data
-
-    
 
 def calculate_order(projects):
     user_lists = []
@@ -245,3 +237,49 @@ def broadcast_text(results):
 
     return result_text
 
+def get_removed_pairs():
+    pair_cursor = Pair.find({"status": "removed", "broadcast": True})
+    removed_pairs = list(pair_cursor)
+    removed_pair_details = []
+    if len(removed_pairs)>0:
+        for removed_pair in removed_pairs:
+            project_cursor = Project.find({"pair_address": removed_pair['pair_address']})
+            projects = list(project_cursor)
+            shilled_usernames = []
+            if len(projects) > 0:
+                for project in projects:
+                    if not project['username'] in shilled_usernames:
+                        shilled_usernames.append(project['username'])
+            
+            single_removed_pair = {
+                "token": removed_pair['token'],
+                "symbol": removed_pair['symbol'],
+                "url": removed_pair['url'],
+                "users": shilled_usernames
+            }
+            exist = [removed_pair_detail for removed_pair_detail in removed_pair_details if removed_pair_detail['token'] == single_removed_pair['token']]
+            if len(exist) == 0:
+                removed_pair_details.append(single_removed_pair)
+    
+    removed_pairs_details_text = []
+    if len(removed_pair_details)> 0:
+        for removed_pair_detail in removed_pair_details:
+            text = f"<a href='{removed_pair_detail['url']}' >{removed_pair_detail['symbol']}</a> LIQUIDITY REMOVED\n"
+            text += f"<code>❌ {removed_pair_detail['token']}</code>\n"
+            if len(removed_pair_detail['users'])>0:
+                text += "\nShilled by: "
+                for black_username in removed_pair_detail['users']:
+                    text += "@"+black_username+", "
+            removed_pairs_details_text.append(text)
+    
+    pair_db_clear = threading.Thread(target=update_pair_db_removed)
+    pair_db_clear.start()
+    return removed_pairs_details_text
+
+def get_leaderboard():
+    leaderboard = Leaderboard.find_one({"type": "all"})
+    text = ""
+    if leaderboard != None:
+        text = leaderboard['text']
+    
+    return text

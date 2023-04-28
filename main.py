@@ -2,11 +2,12 @@ import logging
 from bot import ShillmasterTelegramBot
 import asyncio
 from controller.leaderboard import token_update
+from helpers.utile import pair_update_status
 
 async def database_update():
     while True:
         await token_update()
-        await asyncio.sleep(100)
+        await asyncio.sleep(300)
 
 def main():
     logging.basicConfig(
