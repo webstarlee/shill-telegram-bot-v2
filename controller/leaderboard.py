@@ -4,7 +4,7 @@ import numpy as np
 import threading
 from datetime import datetime, timedelta
 from models import Pair, Project, Warn, RemovedPair, Setting, Leaderboard
-from config import LEADERBOARD
+from config import LEADERBOARD_ID
 from helpers import make_pair_array, make_coins_ids, get_time_delta, get_percent, format_number_string, convert_am_time, convert_am_str
 from apis import get_pairs_by_pair_address, cryptocurrency_info_ids
 
@@ -69,6 +69,15 @@ def user_rug_check(pair):
 
 def leaderboard_db_update(leaderboard, text):
     Leaderboard.find_one_and_update({"_id": leaderboard['_id']}, {"$set": {"text": text}})
+
+def leaderboard_db_insert(type, text):
+    leaderboard = {
+        "type": type,
+        "chat_id": LEADERBOARD_ID,
+        "mssage_id": "",
+        "text": text
+    }
+    Leaderboard.insert_one(leaderboard)
 
 async def token_update():
     pairs_cursor = Pair.find()
@@ -155,39 +164,33 @@ def get_broadcasts():
     all_text = f"TOP 10 SHILLERS OF ALL TIME\n\n{broadcast_text(all_results)}{now_text}"
     two_text = f"TOP 10 SHILLERS PAST 2 WEEKS\n\n{broadcast_text(two_results)}{now_text}"
     one_text = f"TOP 10 SHILLERS PAST WEEK\n\n{broadcast_text(one_results)}{now_text}"
-    leaderbaards_cursor = Leaderboard.find()
-    leaderboards = list(leaderbaards_cursor)
-    broadcast_data = []
-    if len(leaderboards)>0:
-        for leaderboard in leaderboards:
-            if leaderboard['type'] == "one":
-                single_data = {
-                    "chat_id": LEADERBOARD,
-                    "message_id": leaderboard['message_id'],
-                    "text": one_text
-                }
-                broadcast_data.append(single_data)
 
-                leaderboard_update = threading.Thread(target=leaderboard_db_update, args=(leaderboard, one_text,))
-                leaderboard_update.start()
-            elif leaderboard['type'] == "two":
-                single_data = {
-                    "chat_id": LEADERBOARD,
-                    "message_id": leaderboard['message_id'],
-                    "text": two_text
-                }
-                broadcast_data.append(single_data)
-                leaderboard_update = threading.Thread(target=leaderboard_db_update, args=(leaderboard, two_text,))
-                leaderboard_update.start()
-            elif leaderboard['type'] == "all":
-                single_data = {
-                    "chat_id": LEADERBOARD,
-                    "message_id": leaderboard['message_id'],
-                    "text": all_text
-                }
-                broadcast_data.append(single_data)
-                leaderboard_update = threading.Thread(target=leaderboard_db_update, args=(leaderboard, all_text,))
-                leaderboard_update.start()
+    search_data = [
+        {"type": "all", "text": all_text},
+        {"type": "two", "text": two_text},
+        {"type": "one", "text": one_text},
+    ]
+    broadcast_data = []
+    for single_leader_data in search_data:
+        leaderboard = Leaderboard.find_one({"type": single_leader_data['type']})
+        if leaderboard != None:
+            leaderboard_item = {
+                "chat_id": LEADERBOARD_ID,
+                "message_id": leaderboard['message_id'],
+                "text": single_leader_data['text']
+            }
+            broadcast_data.append(leaderboard_item)
+            leaderboard_update = threading.Thread(target=leaderboard_db_update, args=(leaderboard, single_leader_data['text'],))
+            leaderboard_update.start()
+        else:
+            leaderboard_item = {
+                "chat_id": LEADERBOARD_ID,
+                "message_id": "",
+                "text": single_leader_data['text']
+            }
+            broadcast_data.append(leaderboard_item)
+            leaderboard_insert = threading.Thread(target=leaderboard_db_insert, args=(None, single_leader_data['text'],))
+            leaderboard_insert.start()
 
     return broadcast_data
 

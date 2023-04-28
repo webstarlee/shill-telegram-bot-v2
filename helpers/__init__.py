@@ -1,7 +1,31 @@
 import asyncio
+import maya
+import datetime
 
 def get_time_delta(time_one, time_two):
-    delta = time_two-time_one
+    cal_time_one = datetime.datetime.utcnow()
+    cal_time_two = datetime.datetime.utcnow()
+    if isinstance(time_one, datetime.date):
+        cal_time_one = time_one
+    else:
+        cal_time_one_datetime = maya.parse(time_one).datetime()
+        cal_time_one_date = cal_time_one_datetime.date()
+        cal_time_one_time = cal_time_one_datetime.time()
+        cal_time_one_time = str(cal_time_one_time).split('.')[0]
+        cal_time_one_str = str(cal_time_one_date)+" "+str(cal_time_one_time)
+        cal_time_one = datetime.datetime.strptime(cal_time_one_str, '%Y-%m-%d %H:%M:%S')
+    
+    if isinstance(time_two, datetime.date):
+        cal_time_two = time_two
+    else:
+        cal_time_two_datetime = maya.parse(time_two).datetime()
+        cal_time_two_date = cal_time_two_datetime.date()
+        cal_time_two_time = cal_time_two_datetime.time()
+        cal_time_two_time = str(cal_time_two_time).split('.')[0]
+        cal_time_two_str = str(cal_time_two_date)+" "+str(cal_time_two_time)
+        cal_time_two = datetime.datetime.strptime(cal_time_two_str, '%Y-%m-%d %H:%M:%S')
+
+    delta = cal_time_two-cal_time_one
     delta_min = delta.seconds/60
     return delta_min
 

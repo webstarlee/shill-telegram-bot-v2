@@ -21,6 +21,7 @@ class ShillmasterTelegramBot:
 
     def __init__(self):
         logging.info("Bot init")
+        asyncio.get_event_loop().create_task(self.leaderboard())
     
     async def _leaderboard(self):
         broadcasts = get_broadcasts()
@@ -33,25 +34,25 @@ class ShillmasterTelegramBot:
             reply_markup = InlineKeyboardMarkup(keyboard)
         
         for item in broadcasts:
-            logging.info(f"Sending Message to {item['chat_id']}: {item['message_id']}")
-            try:
-                await self.application.bot.edit_message_text(
-                    chat_id=item['chat_id'],
-                    message_id=item['message_id'],
-                    text=item['text'],
-                    disable_web_page_preview=True,
-                    reply_markup=reply_markup,
-                    parse_mode='HTML'
-                )
-            except:
-                logging.info("error")
+            logging.info(item['message_id'])
+            # try:
+            #     await self.application.bot.edit_message_text(
+            #         chat_id=item['chat_id'],
+            #         message_id=item['message_id'],
+            #         text=item['text'],
+            #         disable_web_page_preview=True,
+            #         reply_markup=reply_markup,
+            #         parse_mode='HTML'
+            #     )
+            # except:
+            #     logging.info("error")
                 # await self.application.bot.send_message(chat_id=item['chat_id'], text=item['text'], parse_mode='HTML')
                 # update_leaderboard(item['_id'], {"message_id": result['message_id']})
 
     async def leaderboard(self):
         while True:
-            asyncio.get_event_loop().create_task(self._leaderboard())
             await asyncio.sleep(100)
+            asyncio.create_task(self._leaderboard())
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
@@ -108,8 +109,6 @@ class ShillmasterTelegramBot:
         return None
     
     def run(self):
-        asyncio.get_event_loop().create_task(self.leaderboard())
-
         self.application.add_handler(CommandHandler(["start", "help"], self.start))
         self.application.add_handler(MessageHandler(filters.Regex("/shillmode@(s)?"), self.shillmode))
         self.application.add_handler(MessageHandler(filters.Regex("/banmode@(s)?"), self.banmode))
