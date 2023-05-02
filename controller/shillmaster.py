@@ -125,43 +125,59 @@ async def user_shillmaster(user_id, username, chat_id, token):
 
         text="There is no liquidity for this token"
         return {"is_rug": True, "reason": "liquidity", "text": text}
-    
+
+def token_shillmaster(token):
+    pair = Pair.find_one({"token": token})
+    if pair != None:
+        project_cursor = Project.find({"token": token})
+        projects = list(project_cursor)
+        user_list = []
+        for project in projects:
+            if not project['username'] in user_list:
+                user_list.append(project['username'])
+        
+        return {"user_list": user_list, "marketcap": pair['marketcap'] }
+    return None
+
 async def get_user_shillmaster(user):
     return_txt = "❗ There is not any shill yet for @"+user
     username = user.replace("@", "")
-    user_shills = Project.find({"username": username}).sort("created_at", -1).limit(5)
+    user_shills = Project.find({"username": {'$regex' : f'^{username}$', '$options' : 'i'}}).sort("created_at", -1).limit(5)
     if user_shills != None:
         return_txt = "📊 Shillmaster stats for @"+user+" 📊\n\n"
+        index = 1
         for project in user_shills:
+            if index > 1:
+                    return_txt  += "=================================\n"
             if project['status'] == "active":
                 return_txt += "💰 <a href='"+project['url']+"' >"+project['token_symbol']+"</a> Shared marketcap: $"+format_number_string(project['marketcap'])+"\n"
                 current_info = await current_status(project)
-                
                 if current_info['is_liquidity']:
                     if float(current_info['marketcap'])>float(project['ath_value']):
                         Project.update_one({"_id": project['_id']}, {"$set":{"ath_value": current_info['marketcap']}})
                     return_txt += f"👉 Currently: ${format_number_string(current_info['marketcap'])} ({str(round(current_info['percent'], 2))}x)\n"
                     if float(current_info['marketcap'])< float(project['ath_value']):
                         return_txt += f"🏆 ATH: ${format_number_string(project['ath_value'])} ({get_percent(project['ath_value'], project['marketcap'])}x)\n"
-                    return_txt += "\n"
                 else:
                     is_warn = current_info['is_warn']
                     if is_warn:
                         add_warn(username, project['user_id'], project['chat_id'])
-                    return_txt += "👉 Currently: LIQUIDITY REMOVED\n\n"
+                    return_txt += "👉 Currently: Liquidity removed\n"
             
             if project['status'] == "removed":
                 return_txt += f"💰 <a href='{project['url']}' >{project['token_symbol']}</a> Shared marketcap: ${format_number_string(project['marketcap'])}\n"
-                return_txt += "⚠️ Currently: LIQUIDITY REMOVED\n\n"
-                return_txt += f"🏆 ATH: ${format_number_string(project['ath_value'])} ({get_percent(project['ath_value'], project['marketcap'])}x)\n\n"
+                return_txt += "⚠️ Currently: Liquidity removed\n"
+                return_txt += f"🏆 ATH: ${format_number_string(project['ath_value'])} ({get_percent(project['ath_value'], project['marketcap'])}x)\n"
             
             if project['status'] == "no_liquidity":
                 return_txt += f"💰 <a href='{project['url']}' >{project['token_symbol']}</a> has no Liquidity\n"
-                return_txt += "⚠️ Got Warn with this token\n\n"
+                return_txt += "⚠️ Got Warn with this token\n"
             
             if project['status'] == "honeypot":
                 return_txt += f"💰 <a href='{project['url']}' >{project['token_symbol']}</a> look like Honeypot\n"
-                return_txt += "⚠️ Got Warn with this token\n\n"
+                return_txt += "⚠️ Got Warn with this token\n"
+            
+            index += 1
 
     return return_txt
 

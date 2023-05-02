@@ -21,7 +21,8 @@ from helpers import  (
     add_warn,
     remove_warn,
     get_user_warn,
-    convert_am_pm
+    convert_am_pm,
+    format_number_string
 )
 from controller.leaderboard import get_broadcasts, update_leaderboard_message_id, get_removed_pairs, get_leaderboard
 from controller.advertise import (
@@ -34,7 +35,7 @@ from controller.advertise import (
     get_invoice,
     get_advertise
 )
-from controller.shillmaster import user_shillmaster, get_user_shillmaster
+from controller.shillmaster import user_shillmaster, token_shillmaster, get_user_shillmaster
 from config import BOT_TOKEN, LEADERBOARD_ID
 from models import Setting
 
@@ -219,6 +220,19 @@ class ShillmasterTelegramBot:
         
         return await self._send_message(chat_id, payload_txt)
 
+    async def _shill_off(self, param, update):
+        pair = token_shillmaster(param)
+
+        if pair == None:
+            return await update.message.reply_text(f"Nobody shilled token: {param}", disable_web_page_preview=True)
+        
+        text = ""
+        for user in pair['user_list']:
+            text += f"@{user} shilled \n"
+        
+        text += f"\nMarketcap: ${format_number_string(pair['marketcap'])}"
+        return await update.message.reply_text(text, disable_web_page_preview=True)
+
     async def shill(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         setting = Setting.find_one({"master": "master"})
         receive_text = update.message.text
@@ -227,11 +241,24 @@ class ShillmasterTelegramBot:
         username = update.effective_user.username
         if setting != None:
             if setting['shill_mode'] == False:
-                return await self._send_message(chat_id, "Shill Mode Turned Off")
-            
-        
+                param = get_params(receive_text, "/shill")
+                param = param.replace("@", "")
+                asyncio.get_event_loop().create_task(self._shill_off(param, update))
+                return None
+
         asyncio.get_event_loop().create_task(self._shill(receive_text, chat_id, user_id, username))
-        print("save start")
+
+        return None
+
+    async def show_token_usage(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        setting = Setting.find_one({"master": "master"})
+        receive_text = update.message.text
+        if setting != None:
+            if setting['shill_mode'] == False:
+                param = get_params(receive_text, "/")
+                param = param.replace("@", "")
+                asyncio.get_event_loop().create_task(self._shill_off(param, update))
+                return None
 
         return None
 
@@ -576,6 +603,7 @@ class ShillmasterTelegramBot:
         self.application.add_handler(MessageHandler(filters.Regex("/shillmaster @(s)?"), self.shillmaster))
         self.application.add_handler(MessageHandler(filters.Regex("/remove_warning@(s)?"), self.remove_warning))
         self.application.add_handler(MessageHandler(filters.Regex("/remove_warning @(s)?"), self.remove_warning))
+        self.application.add_handler(MessageHandler(filters.Regex("0x(s)?"), self.show_token_usage))
         self.application.add_handler(MessageHandler(filters.Regex("/unban@(s)?"), self.unban))
         self.application.add_handler(MessageHandler(filters.Regex("/unban @(s)?"), self.unban))
         self.application.add_handler(ConversationHandler(

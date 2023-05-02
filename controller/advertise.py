@@ -1,7 +1,8 @@
 from models import Advertise, Invoice
 from datetime import datetime, timedelta
-from config import wallet
+from config import wallet, rpc_urls
 from helpers import invoice_hash
+from web3 import Web3
 
 def get_advertise():
     now_time = datetime.utcnow()
@@ -103,28 +104,27 @@ def check_available_hour(time):
     return origin_array
 
 def get_invoice(hash, username):
-    return Invoice.find_one({"hash": hash, "username": username})
+    return Invoice.find_one({"hash": hash, "username": username, "paid": False})
 
 def complete_invoice(data):
-    return False
-    # try:
-    #     invoice = Invoice.find_one({"_id": data['invoice_id']})
-    #     if invoice != None:
-    #         chain = "eth"
-    #         if invoice['symbol'] == "BNB": chain = "bsc"
-    #         params = {"chain": chain, "transaction_hash": data['transaction']}
-            
-    #         response = evm_api.transaction.get_transaction(api_key=api_key, params=params)
-    #         transaction = response
-    #         value = int(transaction['value'])
-    #         final_value = value/10**18
-    #         if str(transaction['to_address']).lower() == str(invoice['address']).lower() and float(invoice['quantity']) <= float(final_value):
-    #             Invoice.update_one({"_id", invoice['_id']}, {"$set": {"paid": True}})
-    #             return True
+    try:
+        invoice = Invoice.find_one({"_id": data['invoice_id']})
+        if invoice != None:
+            chain = "ethereum"
+            if invoice['symbol'] == "BNB": chain = "bsc"
+
+            rpc_url = rpc_urls[chain]
+            web3 = Web3(Web3.HTTPProvider(rpc_url))
+            transaction = web3.eth.get_transaction(data['transaction'])
+            value = int(transaction['value'])
+            final_value = value/10**18
+            if str(transaction['to_address']).lower() == str(invoice['address']).lower() and float(invoice['quantity']) <= float(final_value):
+                Invoice.update_one({"_id", invoice['_id']}, {"$set": {"paid": True}})
+                return True
         
-    #     return False
-    # except:
-    #     return False
+        return False
+    except:
+        return False
 
 def edit_advertise(data):
     invoice = Invoice.find_one({"_id": data['invoice_id']})

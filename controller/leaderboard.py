@@ -264,8 +264,8 @@ def get_removed_pairs():
     removed_pairs_details_text = []
     if len(removed_pair_details)> 0:
         for removed_pair_detail in removed_pair_details:
-            text = f"<a href='{removed_pair_detail['url']}' >{removed_pair_detail['symbol']}</a> LIQUIDITY REMOVED\n"
-            text += f"<code>❌ {removed_pair_detail['token']}</code>\n"
+            text = f"<a href='{removed_pair_detail['url']}' >{removed_pair_detail['symbol']}</a> Liquidity removed\n"
+            text += f"❌ <code>{removed_pair_detail['token']}</code>\n"
             if len(removed_pair_detail['users'])>0:
                 text += "\nShilled by: "
                 for black_username in removed_pair_detail['users']:
