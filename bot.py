@@ -48,6 +48,7 @@ COOSE_TOKEN = map(chr, range(8, 10))
 PAYMENT = map(chr, range(8, 10))
 HASH_TYPING = map(chr, range(8, 10))
 TRAN_TYPING = map(chr, range(8, 10))
+CHECK_PREVIOUS_SHILLS = map(chr, range(20, 25))
 END = ConversationHandler.END
 
 class ShillmasterTelegramBot:
@@ -113,11 +114,11 @@ class ShillmasterTelegramBot:
                 )
             except Exception as e:
                 logging.warning(f'Failed to edit message: {str(e)}')
-                raise e
+                return
 
         except Exception as e:
             logging.warning(f'Failed to edit message: {str(e)}')
-            raise e
+            return
 
     async def _leaderboard(self):
         broadcasts = get_broadcasts()
@@ -132,7 +133,7 @@ class ShillmasterTelegramBot:
         for item in broadcasts:
             logging.info(f"Edit message: {item['chat_id']} => {item['message_id']}")
             asyncio.create_task(self._edit_message(item['chat_id'], item['message_id'], item['text'], reply_markup))
-            await asyncio.sleep(2)
+            await asyncio.sleep(10)
 
     async def _leaderboard_check_pair(self):
         removed_pairs = get_removed_pairs()
@@ -143,7 +144,7 @@ class ShillmasterTelegramBot:
 
     async def leaderboard(self):
         while True:
-            await asyncio.sleep(100)
+            # await asyncio.sleep(100)
             asyncio.create_task(self._leaderboard())
             await asyncio.sleep(100)
             asyncio.create_task(self._leaderboard_check_pair())
@@ -153,7 +154,6 @@ class ShillmasterTelegramBot:
         chat_id = update.effective_chat.id
 
         await context.bot.send_message(chat_id=chat_id, text=leaderboard_text, disable_web_page_preview=True, parse_mode='HTML')
-
 
     async def start(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         chat_id = update.effective_chat.id
@@ -212,6 +212,7 @@ class ShillmasterTelegramBot:
         return None
     
     async def _shill(self, receive_text, chat_id, user_id, username):
+        logging.info("Hello shill checking")
         param = get_params(receive_text, "/shill")
         param = param.replace("@", "")
         response = await user_shillmaster(user_id, username, chat_id, param)
@@ -219,12 +220,17 @@ class ShillmasterTelegramBot:
         if is_rug:
             user_warn = add_warn(username, user_id, chat_id)
             text = response['text'] + "\n\n@"+username+" warned: "+str(user_warn['count'])+" Project Rugged ❌"
-            await self._send_message(chat_id, text)
             if user_warn['count'] > 1:
                 text = response['text'] + "\n\n@"+username+" Banned: Posted "+str(user_warn['count'])+" Rugs ❌"
                 await self._block_user(user_warn)
+            
+            return await self._send_message(chat_id, text)
 
         payload_txt = response['text']
+        keyboard = [
+            [InlineKeyboardButton(text="Check Previous Shills", callback_data=f"/check_previous_shill@{username}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
         is_new = response['is_new']
         if is_new:
             setting = Setting.find_one({"master": "master"})
@@ -232,7 +238,8 @@ class ShillmasterTelegramBot:
                 if username in setting['top_ten_users']:
                     await self._send_message(LEADERBOARD_ID, payload_txt)
         
-        return await self._send_message(chat_id, payload_txt)
+        await self._send_message(chat_id, payload_txt, reply_markup)
+        return str(CHECK_PREVIOUS_SHILLS)
 
     async def _shill_off(self, param, update):
         pair = token_shillmaster(param)
@@ -275,10 +282,19 @@ class ShillmasterTelegramBot:
                 return None
 
         return None
-
-    async def _shillmaster(self, receive_text, chat_id):
-        param = get_params(receive_text, "/shillmaster")
+    
+    async def check_previos_shills(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        print("Hellooooooooooooooooo")
+        query = update.callback_query
+        receive_text = query.data
+        chat_id = update.effective_chat.id
+        param = get_params(receive_text, "/check_previous_shill")
         param = param.replace("@", "")
+        asyncio.get_event_loop().create_task(self._shillmaster(param, chat_id))
+        print("show shillmaster status")
+        return None
+
+    async def _shillmaster(self, param, chat_id):
         payload_txt = await get_user_shillmaster(param)
         has_warn = get_user_warn(param)
         if has_warn != None:
@@ -289,7 +305,9 @@ class ShillmasterTelegramBot:
     async def shillmaster(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         receive_text = update.message.text
         chat_id = update.effective_chat.id
-        asyncio.get_event_loop().create_task(self._shillmaster(receive_text, chat_id))
+        param = get_params(receive_text, "/shillmaster")
+        param = param.replace("@", "")
+        asyncio.get_event_loop().create_task(self._shillmaster(param, chat_id))
         print("show shillmaster status")
         return None
 
@@ -620,6 +638,7 @@ class ShillmasterTelegramBot:
         self.application.add_handler(MessageHandler(filters.Regex("0x(s)?"), self.show_token_usage))
         self.application.add_handler(MessageHandler(filters.Regex("/unban@(s)?"), self.unban))
         self.application.add_handler(MessageHandler(filters.Regex("/unban @(s)?"), self.unban))
+        self.application.add_handler(CallbackQueryHandler(self.check_previos_shills, pattern="^/check_previous_shill?"))
         self.application.add_handler(ConversationHandler(
             entry_points=[CommandHandler("advertise", self.advertise)],
             states={

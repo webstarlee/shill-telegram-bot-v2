@@ -212,7 +212,7 @@ def calculate_order(projects):
             }
             user_lists.append(new_list)
 
-    results = sorted(user_lists, key=lambda d: d['average_percent'], reverse=True)
+    results = sorted(user_lists, key=lambda d: d['total_percent'], reverse=True)
 
     results = np.array(results)
     final_result = results[0:10]
@@ -227,7 +227,7 @@ def broadcast_text(results):
         pair = Pair.find_one({"token": result['project']['token']})
         if pair != None:
             current_marketcap = pair['marketcap']
-        result_text += f"#{str(index)}: @{result['username']} Total {str(round(result['average_percent'], 2))}x.\n"
+        result_text += f"#{str(index)}: @{result['username']}\nTotal {str(round(result['total_percent'], 2))}x AVG: {str(round(result['average_percent'], 2))}x.\n"
         result_text += f"👉 <a href='{result['project']['url']}'>{result['project']['token_symbol']}</a> Shared marketcap: ${format_number_string(result['project']['marketcap'])}\n"
         result_text += f"💰 Currently: ${format_number_string(current_marketcap)} ({round(float(current_marketcap)/float(result['project']['marketcap']), 2)}x)\n"
         if float(current_marketcap)<float(result['project']['ath_value']):
