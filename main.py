@@ -2,7 +2,7 @@ import logging
 from bot import ShillmasterTelegramBot
 import asyncio
 from controller.leaderboard import token_update
-from helpers.utile import pair_update_status
+from helpers.utile import get_coin_id
 
 async def database_update():
     while True:

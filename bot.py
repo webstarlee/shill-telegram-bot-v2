@@ -11,6 +11,7 @@ from telegram.ext import (
     CallbackQueryHandler,
     filters
 )
+from telegram.error import TimedOut
 import asyncio
 from helpers import  (
     start_text,
@@ -79,6 +80,45 @@ class ShillmasterTelegramBot:
             )
         return result
 
+    async def _edit_message(self, chat_id, message_id, text, reply_markup):
+        try:
+            await self.application.bot.edit_message_text(
+                chat_id=chat_id,
+                message_id=message_id,
+                text=text,
+                disable_web_page_preview=True,
+                reply_markup=reply_markup,
+                parse_mode='HTML'
+            )
+        except telegram.error.BadRequest as e:
+            if str(e).startswith("Message is not modified"):
+                return
+            
+            if str(e).startswith("Chat not found"):
+                logging.warning(f'Failed to edit message: {str(e)}')
+                # result = await self.application.bot.send_message(chat_id=item['chat_id'], text=item['text'], disable_web_page_preview=True, reply_markup=reply_markup, parse_mode='HTML')
+                # update_leaderboard_message_id(item['_id'], result['message_id'])
+                return
+        except TimedOut:
+            logging.warning("Timeout error, will try after 2 second")
+            await asyncio.sleep(2)
+            try:
+                await self.application.bot.edit_message_text(
+                    chat_id=chat_id,
+                    message_id=message_id,
+                    text=text,
+                    disable_web_page_preview=True,
+                    reply_markup=reply_markup,
+                    parse_mode='HTML'
+                )
+            except Exception as e:
+                logging.warning(f'Failed to edit message: {str(e)}')
+                raise e
+
+        except Exception as e:
+            logging.warning(f'Failed to edit message: {str(e)}')
+            raise e
+
     async def _leaderboard(self):
         broadcasts = get_broadcasts()
         advertise = get_advertise()
@@ -90,35 +130,9 @@ class ShillmasterTelegramBot:
             reply_markup = InlineKeyboardMarkup(keyboard)
         
         for item in broadcasts:
-            try:
-                await self.application.bot.edit_message_text(
-                    chat_id=item['chat_id'],
-                    message_id=item['message_id'],
-                    text=item['text'],
-                    disable_web_page_preview=True,
-                    reply_markup=reply_markup,
-                    parse_mode='HTML'
-                )
-            except telegram.error.BadRequest as e:
-                if str(e).startswith("Message is not modified"):
-                    return
-                try:
-                    await self.application.bot.edit_message_text(
-                        chat_id=item['chat_id'],
-                        message_id=item['message_id'],
-                        text=item['text'],
-                        disable_web_page_preview=True,
-                        reply_markup=reply_markup,
-                        parse_mode='HTML'
-                    )
-                except Exception as e:
-                    logging.warning(f'Failed to edit message: {str(e)}')
-                    raise e
-
-            except Exception as e:
-                logging.info(f"Add new Message id for leaderboard type {item['type']}")
-                result = await self.application.bot.send_message(chat_id=item['chat_id'], text=item['text'], disable_web_page_preview=True, reply_markup=reply_markup, parse_mode='HTML')
-                update_leaderboard_message_id(item['_id'], result['message_id'])
+            logging.info(f"Edit message: {item['chat_id']} => {item['message_id']}")
+            asyncio.create_task(self._edit_message(item['chat_id'], item['message_id'], item['text'], reply_markup))
+            await asyncio.sleep(2)
 
     async def _leaderboard_check_pair(self):
         removed_pairs = get_removed_pairs()
@@ -129,7 +143,7 @@ class ShillmasterTelegramBot:
 
     async def leaderboard(self):
         while True:
-            await asyncio.sleep(50)
+            await asyncio.sleep(100)
             asyncio.create_task(self._leaderboard())
             await asyncio.sleep(100)
             asyncio.create_task(self._leaderboard_check_pair())

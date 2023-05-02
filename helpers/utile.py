@@ -31,7 +31,6 @@ def database_to_json():
     with open("projects.json", "a") as outfile:
             outfile.write("]")
 
-
 def json_to_database():
     f = open('projects.json')
     data = json.load(f)
@@ -77,6 +76,7 @@ def project_to_pair():
             "marketcap": unique_pair['marketcap'],
             "coin_market_id": "",
             "circulating_supply": "",
+            "status": "active",
             "updated_at": datetime.utcnow()
         }
         Pair.insert_one(single_pair)
